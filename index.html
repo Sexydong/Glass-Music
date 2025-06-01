@@ -1,1 +1,780 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>글라스모피즘 MP3 플레이어 V3 - Gemini 연동</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jsmediatags/3.9.5/jsmediatags.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            /* 배경은 JS로 설정됩니다. */
+            background-attachment: fixed; /* 그라데이션이 뷰포트를 덮도록 함 */
+            background-size: cover; /* 전체 커버 */
+            transition: background 0.5s ease-in-out; /* 부드러운 전환 효과 (선택 사항) */
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .spinning {
+            animation: spin 10s linear infinite;
+        }
+
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: rgba(255, 255, 255, 0.1); border-radius: 10px; }
+        ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.4); border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.6); }
+
+        input[type="range"] {
+            -webkit-appearance: none; appearance: none; width: 100%; height: 8px;
+            background: rgba(255, 255, 255, 0.25); border-radius: 4px; outline: none;
+            cursor: pointer; transition: background 0.3s;
+        }
+        input[type="range"]:hover { background: rgba(255, 255, 255, 0.35); }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none; appearance: none; width: 18px; height: 18px;
+            background: white; border-radius: 50%; cursor: pointer;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        }
+        input[type="range"]::-moz-range-thumb {
+            width: 18px; height: 18px; background: white; border-radius: 50%;
+            cursor: pointer; border: none; box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        }
+        
+        .control-icon-button {
+            background-color: transparent; color: white; border-radius: 50%;
+            padding: 0.6rem; display: flex; align-items: center; justify-content: center;
+            transition: background-color 0.2s ease-in-out, transform 0.1s ease-in-out;
+        }
+        .control-icon-button:hover { background-color: rgba(255, 255, 255, 0.15); }
+        .control-icon-button:active { transform: scale(0.92); }
+        .control-icon-button:disabled { opacity: 0.4; cursor: not-allowed; }
+        .control-icon-button:disabled:hover { background-color: transparent; }
+
+        #albumArtImage {
+            width: 100%; height: 100%; object-fit: cover; border-radius: 50%;
+        }
+        .placeholder-icon-container {
+            width: 100%; height: 100%; display: flex; align-items: center;
+            justify-content: center; background-color: rgba(0,0,0,0.3); border-radius: 50%;
+        }
+        #visualizerContainer {
+            flex-grow: 1; 
+            min-height: 120px; 
+            width: 100%;
+        }
+        #visualizerCanvas {
+            width: 100%;
+            height: 100%; 
+            border-radius: 8px;
+        }
+
+        .marquee-container {
+            overflow: hidden;
+            white-space: nowrap;
+            width: 100%;
+        }
+
+        .marquee-content {
+            display: inline-block; 
+        }
+
+        @keyframes scrollAndReset {
+            0%   { transform: translateX(0); }
+            15%  { transform: translateX(0); }
+            75%  { transform: translateX(var(--marquee-scroll-distance)); }
+            90%  { transform: translateX(var(--marquee-scroll-distance)); }
+            100% { transform: translateX(0); }
+        }
+
+        .apply-marquee-animation {
+            animation-name: scrollAndReset;
+            animation-timing-function: linear;
+            animation-iteration-count: infinite;
+        }
+
+        /* Modal Styles */
+        .modal-backdrop {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background-color: rgba(0,0,0,0.5);
+            backdrop-filter: blur(5px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.3s ease, visibility 0.3s ease;
+        }
+        .modal-backdrop.active {
+            opacity: 1;
+            visibility: visible;
+        }
+        .modal-content {
+            background-color: rgba(255,255,255,0.1);
+            backdrop-filter: blur(20px);
+            padding: 20px;
+            border-radius: 16px;
+            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+            border: 1px solid rgba(255,255,255,0.18);
+            color: white;
+            width: 90%;
+            max-width: 500px;
+            max-height: 80vh;
+            overflow-y: auto;
+            position: relative;
+        }
+        .modal-title {
+            font-size: 1.5rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+        }
+        .modal-body {
+            font-size: 0.9rem;
+            line-height: 1.6;
+            white-space: pre-wrap; 
+        }
+        .modal-close-button {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            background: rgba(255,255,255,0.2);
+            border: none;
+            color: white;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            font-size: 1.2rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background-color 0.2s;
+        }
+        .modal-close-button:hover {
+            background: rgba(255,255,255,0.3);
+        }
+        .gemini-button {
+            background-color: rgba(255, 255, 255, 0.15);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-size: 0.875rem;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .gemini-button:hover {
+            background-color: rgba(255, 255, 255, 0.25);
+        }
+        .gemini-button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .loading-spinner {
+            border: 3px solid rgba(255,255,255,0.3);
+            border-top: 3px solid white;
+            border-radius: 50%;
+            width: 16px;
+            height: 16px;
+            animation: spin 1s linear infinite;
+        }
+
+    </style>
+</head>
+<body class="min-h-screen flex items-center justify-center p-4 select-none">
+
+    <div id="musicPlayer" class="w-full max-w-2xl bg-white/10 backdrop-blur-2xl rounded-3xl shadow-2xl p-6 sm:p-8 text-white transition-all duration-300 ease-in-out overflow-hidden">
+        
+        <div class="mb-6 px-2">
+            <div class="flex items-center">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-3 opacity-70 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M15.536 8.464a5 5 0 010 7.072M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+                </svg>
+                <input type="range" id="volumeSlider" min="0" max="1" step="0.01" value="1" class="w-full">
+            </div>
+        </div>
+
+        <div class="flex flex-col md:flex-row gap-6 md:gap-8">
+            <div class="md:w-2/5 flex flex-col justify-between order-2 md:order-1 text-center md:text-left">
+                <div id="visualizerContainer" class="mb-4"> 
+                    <canvas id="visualizerCanvas"></canvas>
+                </div>
+                
+                <div> 
+                    <div class="marquee-container mb-1"> <h2 id="songTitle" class="marquee-content text-2xl sm:text-3xl font-bold">음악을 선택하세요</h2>
+                    </div>
+                    <div class="marquee-container mb-6"> <p id="artistName" class="marquee-content text-sm sm:text-base text-white/70">아티스트</p>
+                    </div>
+                    
+                    <label for="fileUpload" class="hidden">MP3 파일을 선택하세요</label>
+                    <input type="file" id="fileUpload" accept="audio/mp3" class="block w-full text-sm 
+                        file:mr-4 file:py-2.5 file:px-4 file:rounded-lg file:border-0
+                        file:text-sm file:font-semibold file:bg-white/20 file:text-white
+                        hover:file:bg-white/30 file:cursor-pointer file:transition-colors file:duration-150
+                        focus:outline-none focus:ring-2 focus:ring-pink-500/50
+                        cursor-pointer backdrop-blur-sm
+                    "/>
+                    <div class="mt-4 text-center md:text-left">
+                        <button id="geminiInfoButton" class="gemini-button" disabled>
+                            <span class="sparkle-icon">✨</span> 곡 정보 더 알아보기
+                            <div id="geminiLoadingSpinner" class="loading-spinner hidden"></div>
+                        </button>
+                    </div>
+                    <div id="errorMessage" class="text-red-300 text-center md:text-left mt-3 text-xs min-h-[1em]"></div>
+                </div>
+            </div>
+
+            <div class="md:w-3/5 flex flex-col items-center justify-center order-1 md:order-2">
+                <div id="spinningAlbumArtContainer" class="w-60 h-60 sm:w-72 sm:h-72 md:w-80 md:h-80 bg-black/20 rounded-full relative shadow-2xl mb-6 border-4 border-white/10">
+                    <img id="albumArtImage" src="" alt="Album Art" class="hidden"/>
+                    <div id="albumArtPlaceholder" class="placeholder-icon-container">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-24 w-24 text-white/50" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
+                        </svg>
+                    </div>
+                </div>
+
+                <div class="flex items-center justify-center space-x-4 sm:space-x-6">
+                    <button id="prevButton" class="control-icon-button" title="이전 곡">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 sm:h-7 sm:w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 19l-7-7 7-7m8 14l-7-7 7-7" /></svg>
+                    </button>
+                    <button id="playPauseButton" class="control-icon-button p-3 sm:p-3.5 bg-white/25 hover:bg-white/35 text-white rounded-full mx-1" title="재생/일시정지">
+                        </button>
+                    <button id="nextButton" class="control-icon-button" title="다음 곡">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 sm:h-7 sm:w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 5l7 7-7 7M5 5l7 7-7 7" /></svg>
+                    </button>
+                </div>
+                 <div class="w-full max-w-xs sm:max-w-sm mt-6 px-2">
+                    <input type="range" id="progressBar" value="0" min="0" max="100" class="w-full h-1.5 mb-1">
+                    <div class="flex justify-between text-xs text-white/80">
+                        <span id="currentTime">0:00</span>
+                        <span id="totalDuration">0:00</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <audio id="audioPlayer" class="hidden" crossOrigin="anonymous"></audio>
+
+        <div id="geminiInfoModal" class="modal-backdrop">
+            <div class="modal-content">
+                <button id="closeGeminiModalButton" class="modal-close-button">&times;</button>
+                <h3 class="modal-title">✨ 곡 정보</h3>
+                <div id="geminiInfoBody" class="modal-body">
+                    정보를 불러오는 중입니다...
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 기존 변수 선언들...
+        const fileUpload = document.getElementById('fileUpload');
+        const audioPlayer = document.getElementById('audioPlayer');
+        const playPauseButton = document.getElementById('playPauseButton');
+        const prevButton = document.getElementById('prevButton');
+        const nextButton = document.getElementById('nextButton');
+        
+        const songTitleElement = document.getElementById('songTitle');
+        const artistNameElement = document.getElementById('artistName');
+        const errorMessageElement = document.getElementById('errorMessage');
+
+        const spinningAlbumArtContainer = document.getElementById('spinningAlbumArtContainer');
+        const albumArtImage = document.getElementById('albumArtImage');
+        const albumArtPlaceholder = document.getElementById('albumArtPlaceholder');
+
+        const volumeSlider = document.getElementById('volumeSlider');
+        const progressBar = document.getElementById('progressBar');
+        const currentTimeElement = document.getElementById('currentTime');
+        const totalDurationElement = document.getElementById('totalDuration');
+
+        const visualizerContainer = document.getElementById('visualizerContainer');
+        const visualizerCanvas = document.getElementById('visualizerCanvas');
+        const canvasCtx = visualizerCanvas.getContext('2d');
+        let audioContext;
+        let analyser;
+        let source;
+        let dataArray;
+        let animationFrameId;
+        let previousBarHeights; 
+
+        const playIconSVG = `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" fill="currentColor" class="bi bi-play-fill" viewBox="0 0 16 16"><path d="m11.596 8.697-6.363 3.692c-.54.313-1.233-.066-1.233-.697V4.308c0-.63.692-1.01 1.233-.696l6.363 3.692a.802.802 0 0 1 0 1.393z"/></svg>`;
+        const pauseIconSVG = `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" fill="currentColor" class="bi bi-pause-fill" viewBox="0 0 16 16"><path d="M5.5 3.5A1.5 1.5 0 0 1 7 5v6a1.5 1.5 0 0 1-3 0V5a1.5 1.5 0 0 1 1.5-1.5zm5 0A1.5 1.5 0 0 1 12 5v6a1.5 1.5 0 0 1-3 0V5a1.5 1.5 0 0 1 1.5-1.5z"/></svg>`;
+
+        // Gemini API 관련 요소
+        const geminiInfoButton = document.getElementById('geminiInfoButton');
+        const geminiLoadingSpinner = document.getElementById('geminiLoadingSpinner');
+        const geminiInfoModal = document.getElementById('geminiInfoModal');
+        const closeGeminiModalButton = document.getElementById('closeGeminiModalButton');
+        const geminiInfoBody = document.getElementById('geminiInfoBody');
+
+        // 정적 랜덤 배경 설정
+        const staticGradients = [
+            'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', // Blue/Purple
+            'linear-gradient(135deg, #ff8c94 0%, #c569b5 100%)', // Pink to Deeper Purple
+            'linear-gradient(135deg, #f6d365 0%, #fda085 100%)', // Orange/Yellow
+            'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)', // Green/Turquoise
+            'linear-gradient(135deg, #fa709a 0%, #fee140 100%)', // Pink to Yellow
+            'linear-gradient(135deg, #2af598 0%, #009efd 100%)', // Bright Green to Blue
+            'linear-gradient(135deg, #ff0844 0%, #ffb199 100%)'  // Red to Peach
+        ];
+
+        function setRandomStaticBackground() {
+            const randomGradient = staticGradients[Math.floor(Math.random() * staticGradients.length)];
+            document.body.style.background = randomGradient;
+        }
+        // 페이지 로드 시 한 번만 호출
+        setRandomStaticBackground();
+
+
+        function setupVisualizer() {
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (source) {
+                source.disconnect();
+            }
+            analyser = audioContext.createAnalyser();
+            source = audioContext.createMediaElementSource(audioPlayer);
+            source.connect(analyser);
+            analyser.connect(audioContext.destination);
+            
+            analyser.fftSize = 64; 
+            const bufferLength = analyser.frequencyBinCount; 
+            dataArray = new Uint8Array(bufferLength);
+            previousBarHeights = new Array(bufferLength).fill(0); 
+        }
+
+        function drawVisualizer() {
+            if (!analyser || audioPlayer.paused) {
+                if(visualizerCanvas.width > 0 && visualizerCanvas.height > 0) {
+                    canvasCtx.clearRect(0, 0, visualizerCanvas.width, visualizerCanvas.height);
+                }
+                if(animationFrameId) cancelAnimationFrame(animationFrameId);
+                return;
+            }
+
+            animationFrameId = requestAnimationFrame(drawVisualizer);
+            analyser.getByteFrequencyData(dataArray);
+
+            visualizerCanvas.width = visualizerContainer.offsetWidth;
+            visualizerCanvas.height = visualizerContainer.offsetHeight;
+
+            canvasCtx.clearRect(0, 0, visualizerCanvas.width, visualizerCanvas.height);
+            
+            const barWidth = visualizerCanvas.width / dataArray.length; 
+            let x = 0;
+            const barGap = barWidth * 0.2; 
+            const barActualWidth = barWidth - barGap; 
+
+            for(let i = 0; i < dataArray.length; i++) {
+                const targetHeight = (dataArray[i] / 255) * visualizerCanvas.height * 0.9; 
+                
+                const smoothingFactor = 0.15; 
+                let barHeight = previousBarHeights[i] * (1 - smoothingFactor) + targetHeight * smoothingFactor;
+                previousBarHeights[i] = barHeight; 
+
+                const radius = barActualWidth / 2; 
+
+                if (barHeight > 0) {
+                    const gradient = canvasCtx.createLinearGradient(0, visualizerCanvas.height, 0, visualizerCanvas.height - barHeight);
+                    gradient.addColorStop(0, 'rgba(255, 255, 255, 0.3)'); 
+                    gradient.addColorStop(1, 'rgba(255, 255, 255, 0.8)'); 
+                    canvasCtx.fillStyle = gradient;
+
+                    if (barHeight < radius && barHeight > 0) { 
+                        canvasCtx.fillRect(x, visualizerCanvas.height - barHeight, barActualWidth, barHeight);
+                    } else { 
+                        canvasCtx.fillRect(x, visualizerCanvas.height - barHeight + radius, barActualWidth, barHeight - radius);
+                        canvasCtx.beginPath();
+                        canvasCtx.arc(x + barActualWidth / 2, visualizerCanvas.height - barHeight + radius, radius, Math.PI, 0); 
+                        canvasCtx.fill();
+                    }
+                }
+                x += barWidth;
+            }
+        }
+
+        function checkAndApplyMarquee(textElement) {
+            const containerElement = textElement.parentElement; 
+
+            requestAnimationFrame(() => {
+                textElement.classList.remove('apply-marquee-animation');
+                textElement.style.animationName = 'none';
+                void textElement.offsetWidth; 
+
+                const scrollWidth = textElement.scrollWidth;
+                const clientWidth = containerElement.clientWidth;
+
+                if (scrollWidth > clientWidth) {
+                    const scrollDistance = -(scrollWidth - clientWidth); 
+                    const overflowAmount = scrollWidth - clientWidth;
+                    let duration = 5 + (overflowAmount / 30);
+                    duration = Math.min(Math.max(duration, 5), 20); 
+
+                    textElement.style.setProperty('--marquee-scroll-distance', `${scrollDistance}px`);
+                    textElement.style.animationDuration = `${duration.toFixed(2)}s`;
+                    textElement.classList.add('apply-marquee-animation');
+                } else {
+                    textElement.style.removeProperty('--marquee-scroll-distance');
+                    textElement.style.animationName = '';
+                    textElement.style.animationDuration = '';
+                    textElement.classList.remove('apply-marquee-animation');
+                }
+            });
+        }
+
+
+        function disableControls(disabled = true) {
+            playPauseButton.disabled = disabled;
+            prevButton.disabled = disabled;
+            nextButton.disabled = disabled;
+            progressBar.disabled = disabled;
+            geminiInfoButton.disabled = disabled; 
+        }
+        
+        disableControls();
+        playPauseButton.innerHTML = playIconSVG;
+
+        fileUpload.addEventListener('change', function(event) {
+            const file = event.target.files[0];
+            errorMessageElement.textContent = ''; 
+            albumArtImage.classList.add('hidden');
+            albumArtPlaceholder.classList.remove('hidden');
+            albumArtImage.src = '';
+            if (animationFrameId) cancelAnimationFrame(animationFrameId);
+            if(visualizerCanvas.width > 0 && visualizerCanvas.height > 0) {
+                 canvasCtx.clearRect(0, 0, visualizerCanvas.width, visualizerCanvas.height);
+            }
+            checkAndApplyMarquee(songTitleElement);
+            checkAndApplyMarquee(artistNameElement);
+
+
+            if (file) {
+                if (!file.type.startsWith('audio/mpeg') && !file.type.startsWith('audio/mp3')) {
+                    errorMessageElement.textContent = '올바른 MP3 파일을 선택해주세요.';
+                    songTitleElement.textContent = "오류 발생";
+                    artistNameElement.textContent = "파일 형식 오류";
+                    checkAndApplyMarquee(songTitleElement);
+                    checkAndApplyMarquee(artistNameElement);
+                    disableControls(true);
+                    audioPlayer.src = '';
+                    return;
+                }
+
+                const objectURL = URL.createObjectURL(file);
+                audioPlayer.src = objectURL;
+                
+                window.jsmediatags.read(file, {
+                    onSuccess: function(tag) {
+                        const tags = tag.tags;
+                        songTitleElement.textContent = tags.title || file.name.replace(/\.[^/.]+$/, "");
+                        artistNameElement.textContent = tags.artist || "알 수 없는 아티스트";
+                        checkAndApplyMarquee(songTitleElement);
+                        checkAndApplyMarquee(artistNameElement);
+
+                        if (tags.picture) {
+                            const { data, format } = tags.picture;
+                            let base64String = "";
+                            for (let i = 0; i < data.length; i++) {
+                                base64String += String.fromCharCode(data[i]);
+                            }
+                            albumArtImage.src = `data:${format};base64,${window.btoa(base64String)}`;
+                            albumArtImage.classList.remove('hidden');
+                            albumArtPlaceholder.classList.add('hidden');
+                        } else {
+                            albumArtImage.classList.add('hidden');
+                            albumArtPlaceholder.classList.remove('hidden');
+                        }
+                    },
+                    onError: function(error) {
+                        console.error('Error reading ID3 tags:', error);
+                        songTitleElement.textContent = file.name.replace(/\.[^/.]+$/, "");
+                        artistNameElement.textContent = "태그 정보를 읽을 수 없음";
+                        checkAndApplyMarquee(songTitleElement);
+                        checkAndApplyMarquee(artistNameElement);
+                        albumArtImage.classList.add('hidden');
+                        albumArtPlaceholder.classList.remove('hidden');
+                    }
+                });
+                
+                disableControls(false); 
+                playPauseButton.innerHTML = playIconSVG;
+                spinningAlbumArtContainer.classList.remove('spinning');
+                audioPlayer.currentTime = 0;
+                progressBar.value = 0;
+                currentTimeElement.textContent = formatTime(0);
+                
+                if (audioContext && audioContext.state === 'suspended') {
+                    audioContext.resume();
+                }
+                setupVisualizer();
+
+            } else {
+                songTitleElement.textContent = "음악을 선택하세요";
+                artistNameElement.textContent = "아티스트";
+                checkAndApplyMarquee(songTitleElement);
+                checkAndApplyMarquee(artistNameElement);
+                disableControls(true);
+                playPauseButton.innerHTML = playIconSVG;
+                spinningAlbumArtContainer.classList.remove('spinning');
+                audioPlayer.src = ''; 
+                progressBar.value = 0;
+                currentTimeElement.textContent = formatTime(0);
+                totalDurationElement.textContent = formatTime(0);
+                albumArtImage.classList.add('hidden');
+                albumArtPlaceholder.classList.remove('hidden');
+                albumArtImage.src = '';
+                if (animationFrameId) cancelAnimationFrame(animationFrameId);
+                if(visualizerCanvas.width > 0 && visualizerCanvas.height > 0) {
+                    canvasCtx.clearRect(0, 0, visualizerCanvas.width, visualizerCanvas.height);
+                }
+            }
+        });
+
+        playPauseButton.addEventListener('click', function() {
+            if (!audioPlayer.src || audioPlayer.src === window.location.href || audioPlayer.src.startsWith('blob:') === false) {
+                errorMessageElement.textContent = '먼저 음악 파일을 선택해주세요.';
+                if (!audioPlayer.src.startsWith('blob:')) { 
+                    fileUpload.click(); 
+                }
+                return;
+            }
+            
+            if (!audioContext) {
+                setupVisualizer();
+            }
+            if (audioContext.state === 'suspended') {
+                audioContext.resume();
+            }
+
+            if (audioPlayer.paused) {
+                audioPlayer.play().catch(handlePlaybackError);
+            } else {
+                audioPlayer.pause();
+            }
+        });
+        
+        prevButton.addEventListener('click', () => {
+            if (audioPlayer.src && audioPlayer.src.startsWith('blob:')) audioPlayer.currentTime = 0;
+        });
+
+        nextButton.addEventListener('click', () => { 
+            if (audioPlayer.src && audioPlayer.src.startsWith('blob:')) audioPlayer.currentTime = 0; 
+        });
+
+        audioPlayer.addEventListener('play', function() {
+            spinningAlbumArtContainer.classList.add('spinning');
+            playPauseButton.innerHTML = pauseIconSVG;
+            if (audioContext && analyser) {
+                 drawVisualizer(); 
+            }
+        });
+
+        audioPlayer.addEventListener('pause', function() {
+            spinningAlbumArtContainer.classList.remove('spinning');
+            playPauseButton.innerHTML = playIconSVG;
+            if (animationFrameId) cancelAnimationFrame(animationFrameId);
+        });
+
+        audioPlayer.addEventListener('ended', function() {
+            spinningAlbumArtContainer.classList.remove('spinning');
+            playPauseButton.innerHTML = playIconSVG;
+            audioPlayer.currentTime = 0;
+            progressBar.value = 0;
+            if (animationFrameId) cancelAnimationFrame(animationFrameId);
+            if(visualizerCanvas.width > 0 && visualizerCanvas.height > 0) {
+                canvasCtx.clearRect(0, 0, visualizerCanvas.width, visualizerCanvas.height);
+            }
+        });
+        
+        audioPlayer.addEventListener('loadedmetadata', () => {
+            progressBar.max = audioPlayer.duration;
+            totalDurationElement.textContent = formatTime(audioPlayer.duration);
+        });
+
+        audioPlayer.addEventListener('timeupdate', () => {
+            progressBar.value = audioPlayer.currentTime;
+            currentTimeElement.textContent = formatTime(audioPlayer.currentTime);
+        });
+        
+        progressBar.addEventListener('input', () => {
+            if(audioPlayer.src && audioPlayer.src.startsWith('blob:') && !isNaN(audioPlayer.duration)) { 
+                 audioPlayer.currentTime = progressBar.value;
+            }
+        });
+
+        volumeSlider.addEventListener('input', (e) => {
+            audioPlayer.volume = e.target.value;
+        });
+        
+        function formatTime(seconds) {
+            if (isNaN(seconds) || seconds === Infinity) return "0:00"; 
+            const minutes = Math.floor(seconds / 60);
+            const secs = Math.floor(seconds % 60);
+            return `${minutes}:${secs < 10 ? '0' : ''}${secs}`;
+        }
+        
+        function handlePlaybackError(error) {
+            console.error("Playback promise rejected:", error); 
+            errorMessageElement.textContent = '재생 중 오류가 발생했습니다. (재생 시작 실패)';
+        }
+        
+        audioPlayer.addEventListener('error', function(e) {
+            console.error("Audio Player Error Event:", e); 
+            const mediaError = audioPlayer.error;
+            let errorMsg = '오디오 파일을 재생할 수 없습니다. 파일을 확인해주세요.';
+
+            if (mediaError) {
+                console.error("MediaError Code:", mediaError.code);
+                console.error("MediaError Message:", mediaError.message); 
+
+                switch (mediaError.code) {
+                    case MediaError.MEDIA_ERR_ABORTED: 
+                        errorMsg = '오디오 재생이 사용자에 의해 중단되었습니다.';
+                        break;
+                    case MediaError.MEDIA_ERR_NETWORK: 
+                        errorMsg = '네트워크 오류로 오디오를 불러올 수 없습니다.';
+                        break;
+                    case MediaError.MEDIA_ERR_DECODE: 
+                        errorMsg = '오디오 파일을 디코딩할 수 없습니다. 파일이 손상되었거나 지원되지 않는 형식일 수 있습니다.';
+                        break;
+                    case MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED: 
+                        if (audioPlayer.currentSrc === "" || audioPlayer.src === window.location.href || !audioPlayer.src.startsWith('blob:')) {
+                            errorMsg = '오디오 소스가 설정되지 않았거나 비어 있습니다. 파일을 선택해주세요.';
+                        } else {
+                            errorMsg = '지원되지 않는 오디오 형식입니다. 다른 MP3 파일을 시도해주세요.';
+                        }
+                        break;
+                    default:
+                        errorMsg = `알 수 없는 오디오 오류가 발생했습니다. (코드: ${mediaError.code})`;
+                }
+            } else {
+                console.error("Audio player error object (audioPlayer.error) is null, but an error event was triggered.");
+                if (!audioPlayer.src || audioPlayer.src === window.location.href) {
+                     errorMsg = '오디오 소스가 설정되지 않았거나 비어 있습니다. 파일을 선택해주세요.';
+                }
+            }
+
+            errorMessageElement.textContent = errorMsg;
+            songTitleElement.textContent = "재생 오류";
+            artistNameElement.textContent = "파일을 확인해주세요";
+            checkAndApplyMarquee(songTitleElement);
+            checkAndApplyMarquee(artistNameElement);
+            disableControls(true);
+            spinningAlbumArtContainer.classList.remove('spinning');
+            if (animationFrameId) cancelAnimationFrame(animationFrameId);
+            if(visualizerCanvas.width > 0 && visualizerCanvas.height > 0) {
+                canvasCtx.clearRect(0, 0, visualizerCanvas.width, visualizerCanvas.height);
+            }
+        });
+
+        window.addEventListener('resize', () => { 
+            if (analyser && !audioPlayer.paused) {
+                 if (animationFrameId) cancelAnimationFrame(animationFrameId); 
+                 drawVisualizer(); 
+            } else {
+                if(visualizerContainer && visualizerCanvas) { 
+                    visualizerCanvas.width = visualizerContainer.offsetWidth;
+                    visualizerCanvas.height = visualizerContainer.offsetHeight;
+                     if(visualizerCanvas.width > 0 && visualizerCanvas.height > 0) {
+                        canvasCtx.clearRect(0, 0, visualizerCanvas.width, visualizerCanvas.height);
+                    }
+                }
+            }
+            checkAndApplyMarquee(songTitleElement);
+            checkAndApplyMarquee(artistNameElement);
+        });
+
+        // Gemini Modal Logic
+        function openGeminiModal() {
+            geminiInfoModal.classList.add('active');
+        }
+        function closeGeminiModal() {
+            geminiInfoModal.classList.remove('active');
+        }
+
+        closeGeminiModalButton.addEventListener('click', closeGeminiModal);
+        geminiInfoModal.addEventListener('click', function(event) { 
+            if (event.target === geminiInfoModal) {
+                closeGeminiModal();
+            }
+        });
+
+        geminiInfoButton.addEventListener('click', async function() {
+            const songTitle = songTitleElement.textContent;
+            const artistName = artistNameElement.textContent;
+
+            if (!songTitle || songTitle === "음악을 선택하세요" || songTitle === "오류 발생" || songTitle === "재생 오류") {
+                geminiInfoBody.textContent = "곡 정보를 가져오려면 먼저 음악을 재생해주세요.";
+                openGeminiModal();
+                return;
+            }
+
+            geminiLoadingSpinner.classList.remove('hidden');
+            geminiInfoButton.disabled = true;
+            geminiInfoBody.textContent = "Gemini에게 물어보는 중... ✨";
+            openGeminiModal();
+
+            const prompt = `'${artistName}'의 '${songTitle}'이라는 곡에 대한 흥미로운 사실, 배경 이야기, 또는 관련된 재미있는 정보를 한국어로 알려줘. 너무 길지 않게, 몇 가지 중요한 포인트 위주로 설명해줘.`;
+            
+            let chatHistory = [{ role: "user", parts: [{ text: prompt }] }];
+            const payload = { contents: chatHistory };
+            const apiKey = ""; 
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+
+            try {
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) {
+                    throw new Error(`API 요청 실패: ${response.status}`);
+                }
+
+                const result = await response.json();
+                
+                if (result.candidates && result.candidates.length > 0 &&
+                    result.candidates[0].content && result.candidates[0].content.parts &&
+                    result.candidates[0].content.parts.length > 0) {
+                    const text = result.candidates[0].content.parts[0].text;
+                    geminiInfoBody.textContent = text;
+                } else {
+                    geminiInfoBody.textContent = "죄송합니다, 정보를 찾을 수 없거나 응답 형식이 올바르지 않습니다.";
+                     console.error("Unexpected API response structure:", result);
+                }
+
+            } catch (error) {
+                console.error("Gemini API 호출 중 오류 발생:", error);
+                geminiInfoBody.textContent = "정보를 불러오는 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.";
+            } finally {
+                geminiLoadingSpinner.classList.add('hidden');
+                geminiInfoButton.disabled = false; 
+            }
+        });
+
+
+        window.addEventListener('beforeunload', () => {
+            if (audioPlayer.src && audioPlayer.src.startsWith('blob:')) {
+                URL.revokeObjectURL(audioPlayer.src);
+            }
+            if (audioContext) {
+                audioContext.close();
+            }
+        });
+    </script>
+</body>
+</html>
 
